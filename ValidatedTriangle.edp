@@ -1,0 +1,151 @@
+// Rigorous computation of $lambda_2/lambda_1$ for triangles for the 
+// purpose of validating the triangular PPW inequality.
+// ----------------------------------------
+// We use the inverse shift mode to compute the eigenvalue
+// the shift is given with sigma real
+// -------------------------------------
+
+
+// Keep the program from being chatty. Enable for debugging purposes.
+verbosity=0;
+
+// Maximum error
+real err = 1e-9;
+real errsmall = 1e-16;
+
+// Initialize p and q coordinates
+real p = 0.5 - errsmall;
+real q = 0.156 - errsmall;
+
+// Initialize step sizes. t0 is for q and t is for p.
+real t0 = 0;
+real t = 0;
+
+// Initialize ratio
+real ratio = 1;
+
+// Tool to find step size t
+real alp = 1;
+real bet = 1;
+real gam = 1;
+
+// Meshsize
+real ell = 1;
+
+// Orthonormalization coefficient
+real orth = 1;
+
+
+// ###### Begin Main Program ######
+while (q <= 0.866026){
+	
+	t0 = 1;
+	t=1;
+
+	if (q < 0.8638){ p = 0.5-errsmall; }
+	else { p = 0.5 + sqrt( (0.0022)^2 - (q - sqrt(3)*0.5)^2) - errsmall; }
+	
+	// cout << "--- Upcoming p: "<< p << " --- Upcoming q: "<< q << " ---"<<endl;
+	// cout << "Is p <= 1? " << p<=1 << endl;
+	// cout << "Is p^2 + q^2 <= 1? " << p^2 + q^2 <=1 << endl;
+	// cout << "What is sqrt( (p-1/2)^2 + (q - sqrt(3)/2)^2))? " << sqrt( (p-0.5)^2 + (q - sqrt(3)/2)^2) << endl;
+
+
+	
+	while (p <= 1+err && p^2 + q^2 <=1+errsmall){
+
+		// Compute the eigenvalues and eigenvectors
+
+		border C01(t=0, 1){x=t; y=0;};
+      		border C02(t=0, 1){x=(p-1)*t+1; y = q*t;};
+      		border C03(t=0, 1){x=p*(1-t); y = q*(1-t);};
+      		mesh Th=buildmesh(C01(250)+C02(250)+C03(250));
+      		fespace Vh(Th,P1nc);
+      		Vh u1,u2;
+
+      		real sigma = 00;  // value of the shift 
+
+      		varf  a(u1,u2)= int2d(Th)(  dx(u1)*dx(u2) + dy(u1)*dy(u2) - sigma* u1*u2 )
+                    +  on(1,2,3,4,u1=0) ;  // Boundary condition
+                   
+      		varf b([u1],[u2]) = int2d(Th)(  u1*u2 ) ; // no  Boundary condition
+
+      		matrix A= a(Vh,Vh,solver=sparsesolver); 
+      		matrix B= b(Vh,Vh,solver=CG,eps=1e-20); 
+
+      		int nev=2;  // number of computed eigen value close to sigma
+
+      		real[int] ev(nev); // to store nev eigein value
+      		Vh[int] eV(nev);   // to store nev eigen vector
+
+		// Note the tolerance of 1e-10
+      		int k=EigenValue(A,B,sym=true,sigma=sigma,value=ev,vector=eV,tol=1e-10,maxit=0,ncv=0,which="LM"); // which="LM" default 
+
+      		k=min(k,nev); //  In casethe number of converged eigenvalues is greater than nev;
+		//cout << ev[0] << endl;
+
+		Vh lengths = hTriangle;
+		ell = lengths[].max + 1e-15;
+		ev[0] = (ev[0]+err)/(1 + 0.19309 * (ell+err)^2 * (ev[0]+err));
+		//cout << ev[0] << endl;
+		
+		// The computed eigenvectors are orthonormal up to a small error, but we divide for the sake of numerical rigor.
+
+		real normo = int2d(Th)(eV[0]*eV[0]);
+
+		normo = sqrt(normo);
+
+		u1 = eV[0]/normo;
+
+		orth = int2d(Th)(u1*eV[1]);
+
+		u2 = (eV[1] - orth*eV[0]);
+
+		normo = int2d(Th)(u2*u2);
+
+		//cout << "Gram-Schmidt updated" << endl;
+
+		u2 = u2/sqrt(normo);
+
+		real norcheck = int2d(Th)(u2*u1);
+		//cout << "Gram-Schmidt complete: " << norcheck << endl;
+
+		
+		ev[1] = int2d(Th)(dx(u1)*dx(u1) + dy(u1)*dy(u1)) + int2d(Th)(dx(u2)*dx(u2) + dy(u2)*dy(u2)) - ev[0];
+
+		//cout << " --- Post lambda_2: "<< ev[1] << endl;
+
+		//cout << "Pairing of u1 with u1: " << int2d(Th)(eV[0]*eV[0]) << endl;
+		//cout << "Pairing of u1 with u2: " << int2d(Th)(eV[0]*eV[1]) << endl;
+		//cout << "Pairing of u2 with u2: " << int2d(Th)(eV[1]*eV[1]) << endl;
+		//cout << "--- Post-Ratio: "<< (ev[1] + err)/(ev[0] - err) + err << " ---"<<endl;
+		
+     		ratio = (ev[1] + err)/(ev[0] - err) + err;
+
+		alp = (1+ratio)/(23*q^2)+err;
+		bet = 2*(1+ratio)/(23*q)+err;
+		gam = (ratio-7.0/3.0) + err;
+
+		//cout << "alpha: " << alp << " beta: " << bet << " gamma: " << gam << endl;
+		
+		// Multiplication by 0.9 compensates for not including the error in the previous terms
+		// Make sure to use the stable quadratic formula!
+		
+		t = 0.9*2*gam/(-bet - sqrt(bet^2 - 4*alp *gam))*sqrt(2)/2;
+
+		cout << "--- Current p: " << p <<" --- Current q :"<< q << " --- Step size for p: " << t << " --- Post-Ratio: "<< ev[1]/ev[0] <<endl;
+		p = p + t;
+		// cout << " --- Step size for p: "<< t << " --- New p: "<< p << " ---"<<endl;
+
+		//cout << "--- Pre-update t0: "<< t0 << " --- " << endl;
+		t0 = min(t,t0);
+		//cout << "--- Post-update t0: "<< t0 << " --- " << endl;
+		
+		
+        }
+
+	q = q + t0 - err;
+
+	cout << "--- Step size for q: "<< t0 << "--- New q: "<< q << "---"<<endl;
+
+}
