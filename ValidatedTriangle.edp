@@ -1,9 +1,6 @@
 // Rigorous computation of $lambda_2/lambda_1$ for triangles for the 
 // purpose of validating the triangular PPW inequality.
 // ----------------------------------------
-// We use the inverse shift mode to compute the eigenvalue
-// the shift is given with sigma real
-// -------------------------------------
 
 
 // Keep the program from being chatty. Enable for debugging purposes.
